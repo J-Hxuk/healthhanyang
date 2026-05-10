@@ -1,18 +1,10 @@
 # Cat Health Copilot - Python Dependencies
 
 # Core Framework
-streamlit==1.28.0
+streamlit>=1.28.0
 
-# Data Processing
-pandas==2.1.0
-numpy==1.25.0
-
-# Visualization
-plotly==5.17.0
-
-# Testing
-pytest==7.4.0
-hypothesis==6.88.0
+# Data Processing (streamlit includes these)
+# pandas and numpy are included with streamlit
 
 # Utilities
-python-dateutil==2.8.2
+python-dateutil>=2.8.2

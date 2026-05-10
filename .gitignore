@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files (keep structure but ignore actual data)
+data/raw/*.json
+data/processed/*.json
+data/events/*.json
+data/alerts/*.json
+data/profiles/*.json
+
+# Keep directory structure
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/events/.gitkeep
+!data/alerts/.gitkeep
+!data/profiles/.gitkeep
+!data/baseline/.gitkeep
+
+# Logs
+*.log
+
+# Streamlit
+.streamlit/secrets.toml
