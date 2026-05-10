@@ -1,0 +1,17 @@
+{
+  "event_id": "ef414256-6c12-473e-a3cf-e2a103ce400a",
+  "device_id": "PAD_001",
+  "cat_id": "59cc7e49-203d-4a8d-b527-fccdc2cffeac",
+  "event_type": "cat_visit",
+  "start_time": "2026-05-10T18:02:39.525332",
+  "end_time": "2026-05-10T18:03:42.525332",
+  "duration": 63.0,
+  "baseline_before": 2.0,
+  "baseline_after": 2.0,
+  "max_weight": 6.8,
+  "avg_weight": 6.5046875,
+  "weight_gain": 4.8,
+  "baseline_shift": 0.0,
+  "stability_score": 0.9582621182499041,
+  "confidence_score": 0.7860321699098901
+}
