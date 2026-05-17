@@ -24,6 +24,7 @@ from src.events.detector import EventDetector
 from src.events.classifier import EventClassifier
 from src.identification.cat_identifier import CatIdentifier
 from src.storage.database import Database
+from src.analysis.health_monitor import HealthMonitor
 from config.config import get_config
 
 # Page configuration
@@ -359,6 +360,9 @@ if 'classifier' not in st.session_state:
 if 'identifier' not in st.session_state:
     st.session_state.identifier = CatIdentifier()
 
+if 'health_monitor' not in st.session_state:
+    st.session_state.health_monitor = HealthMonitor()
+
 if 'config' not in st.session_state:
     st.session_state.config = get_config()
 
@@ -426,6 +430,55 @@ if page == "홈 대시보드":
                     f"{len(unknown_events)}회",
                     help="식별되지 않은 방문"
                 )
+        
+        # Health Alerts Section
+        st.markdown("---")
+        st.subheader("🏥 건강 알림")
+        
+        # Check each cat for health issues
+        alerts = []
+        for profile in profiles:
+            # Get today's events for this cat
+            cat_today_events = st.session_state.db.get_events(
+                cat_id=profile.cat_id,
+                start_date=today_start,
+                event_type=EventType.CAT_VISIT
+            )
+            
+            # Get recent events (last 7 days) for baseline
+            week_ago = today_start - timedelta(days=7)
+            cat_recent_events = st.session_state.db.get_events(
+                cat_id=profile.cat_id,
+                start_date=week_ago,
+                end_date=today_start,
+                event_type=EventType.CAT_VISIT
+            )
+            
+            # Check for frequent urination
+            alert = st.session_state.health_monitor.check_frequent_urination(
+                profile, cat_today_events, cat_recent_events
+            )
+            
+            if alert:
+                alerts.append(alert)
+        
+        # Display alerts
+        if alerts:
+            for alert in alerts:
+                if alert.severity == "critical":
+                    st.error(f"🚨 **{alert.message}**")
+                    with st.expander("상세 정보 보기"):
+                        st.write(alert.details)
+                elif alert.severity == "warning":
+                    st.warning(f"⚠️ **{alert.message}**")
+                    with st.expander("상세 정보 보기"):
+                        st.write(alert.details)
+                else:
+                    st.info(f"ℹ️ **{alert.message}**")
+                    with st.expander("상세 정보 보기"):
+                        st.write(alert.details)
+        else:
+            st.success("✅ 모든 고양이가 정상 패턴을 보이고 있습니다")
     
     # Simulator on home dashboard
     st.markdown("---")
