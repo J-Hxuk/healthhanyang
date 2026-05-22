@@ -1,0 +1,10 @@
+{
+  "id": "aea384fb-b337-4f22-b8da-d6391fe97a76",
+  "device_id": "PAD_001",
+  "baseline_weight": 2.0,
+  "timestamp": "2026-05-22T14:27:42.573487",
+  "reason": "user_reset",
+  "previous_weight": 2.0,
+  "change_amount": 0.0,
+  "data_source": "simulation"
+}
