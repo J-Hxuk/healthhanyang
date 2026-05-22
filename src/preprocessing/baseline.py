@@ -11,7 +11,7 @@ from collections import deque
 import statistics
 import logging
 
-from ..data.schema import ProcessedSensorData, BaselineHistory
+from ..data.schema import ProcessedSensorData, BaselineHistory, DataSourceMode
 from config.config import get_config
 
 
@@ -21,18 +21,22 @@ logger = logging.getLogger(__name__)
 class BaselineManager:
     """Manages baseline weight calculation and updates"""
     
-    def __init__(self, device_id: str):
+    def __init__(self, device_id: str, database=None, data_source: DataSourceMode = DataSourceMode.SIMULATION):
         """
         Initialize baseline manager
         
         Args:
             device_id: Device ID for this baseline manager
+            database: Optional Database instance for persisting history
+            data_source: Data source mode (SIMULATION or SENSOR)
         """
         self.device_id = device_id
         self.config = get_config()
         self.current_baseline: Optional[float] = None
         self.history: List[BaselineHistory] = []
         self.stability_window = deque(maxlen=20)  # Track recent weights for stability
+        self.database = database
+        self.data_source = data_source
     
     def calculate_baseline(self, stable_weights: List[float]) -> float:
         """
@@ -94,21 +98,35 @@ class BaselineManager:
             new_baseline: New baseline weight value
             reason: Reason for update (stable, cleaning, litter_refill, user_reset)
         """
-        old_baseline = self.current_baseline
+        previous_weight = self.current_baseline if self.current_baseline is not None else new_baseline
+        change_amount = new_baseline - previous_weight
+        
         self.current_baseline = new_baseline
         
-        # Create history record
+        # Create history record with new fields
         history_record = BaselineHistory(
             id=str(uuid.uuid4()),
             device_id=self.device_id,
             baseline_weight=new_baseline,
             timestamp=datetime.now(),
-            reason=reason
+            reason=reason,
+            previous_weight=previous_weight,
+            change_amount=change_amount,
+            data_source=self.data_source
         )
         
         self.history.append(history_record)
         
-        logger.info(f"Baseline updated: {old_baseline} -> {new_baseline:.3f}kg (reason: {reason})")
+        # Save to database if available
+        if self.database:
+            self.database.save_baseline_history(history_record)
+        
+        logger.info(f"Baseline updated: {previous_weight:.3f} -> {new_baseline:.3f}kg "
+                   f"(change: {change_amount:+.3f}kg, reason: {reason})")
+    
+    def get_current_baseline(self) -> Optional[float]:
+        """Get current baseline weight"""
+        return self.current_baseline
     
     def reset_baseline(self):
         """User-triggered baseline recalibration"""

@@ -19,11 +19,32 @@ class EventType(Enum):
     UNKNOWN = "unknown"
 
 
+class DataSourceMode(Enum):
+    """Data source mode types"""
+    SIMULATION = "simulation"
+    SENSOR = "sensor"
+
+
 class AlertLevel(Enum):
     """Alert severity levels"""
     NORMAL = "Normal"
     WARNING = "Warning"
     CRITICAL = "Critical"
+
+
+class ConnectionStatus(Enum):
+    """Sensor connection status"""
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    ERROR = "error"
+
+
+class SimulationScenario(Enum):
+    """Simulation scenario types"""
+    NORMAL = "normal"
+    POLYURIA_ONSET = "polyuria_onset"
+    GRADUAL_WEIGHT_LOSS = "gradual_weight_loss"
+    COMBINED = "combined"
 
 
 @dataclass
@@ -115,6 +136,7 @@ class Event:
     baseline_shift: float  # kg
     stability_score: float  # 0-1
     confidence_score: float  # 0-1
+    data_source: DataSourceMode  # Track data origin
 
     def to_dict(self) -> dict:
         """Convert to dictionary for storage"""
@@ -133,7 +155,8 @@ class Event:
             'weight_gain': self.weight_gain,
             'baseline_shift': self.baseline_shift,
             'stability_score': self.stability_score,
-            'confidence_score': self.confidence_score
+            'confidence_score': self.confidence_score,
+            'data_source': self.data_source.value
         }
 
     @classmethod
@@ -154,7 +177,8 @@ class Event:
             weight_gain=data['weight_gain'],
             baseline_shift=data['baseline_shift'],
             stability_score=data['stability_score'],
-            confidence_score=data['confidence_score']
+            confidence_score=data['confidence_score'],
+            data_source=DataSourceMode(data.get('data_source', 'simulation'))
         )
 
 
@@ -292,6 +316,9 @@ class BaselineHistory:
     baseline_weight: float  # kg
     timestamp: datetime
     reason: str  # stable, cleaning, litter_refill, user_reset
+    previous_weight: float  # kg - previous baseline value
+    change_amount: float  # kg - change magnitude (new - previous)
+    data_source: DataSourceMode  # Track data origin
 
     def to_dict(self) -> dict:
         """Convert to dictionary for storage"""
@@ -300,7 +327,10 @@ class BaselineHistory:
             'device_id': self.device_id,
             'baseline_weight': self.baseline_weight,
             'timestamp': self.timestamp.isoformat(),
-            'reason': self.reason
+            'reason': self.reason,
+            'previous_weight': self.previous_weight,
+            'change_amount': self.change_amount,
+            'data_source': self.data_source.value
         }
 
     @classmethod
@@ -311,5 +341,191 @@ class BaselineHistory:
             device_id=data['device_id'],
             baseline_weight=data['baseline_weight'],
             timestamp=datetime.fromisoformat(data['timestamp']),
-            reason=data['reason']
+            reason=data['reason'],
+            previous_weight=data['previous_weight'],
+            change_amount=data['change_amount'],
+            data_source=DataSourceMode(data['data_source'])
+        )
+
+
+@dataclass
+class WeightMeasurement:
+    """Weight measurement record for cat weight tracking"""
+    measurement_id: str
+    cat_id: str
+    event_id: str
+    measured_weight: float  # kg
+    profile_weight: float  # kg (from CatProfile at time of measurement)
+    weight_difference: float  # measured - profile
+    timestamp: datetime
+    data_source: DataSourceMode
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for storage"""
+        return {
+            'measurement_id': self.measurement_id,
+            'cat_id': self.cat_id,
+            'event_id': self.event_id,
+            'measured_weight': self.measured_weight,
+            'profile_weight': self.profile_weight,
+            'weight_difference': self.weight_difference,
+            'timestamp': self.timestamp.isoformat(),
+            'data_source': self.data_source.value
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'WeightMeasurement':
+        """Create from dictionary"""
+        return cls(
+            measurement_id=data['measurement_id'],
+            cat_id=data['cat_id'],
+            event_id=data['event_id'],
+            measured_weight=data['measured_weight'],
+            profile_weight=data['profile_weight'],
+            weight_difference=data['weight_difference'],
+            timestamp=datetime.fromisoformat(data['timestamp']),
+            data_source=DataSourceMode(data['data_source'])
+        )
+
+
+@dataclass
+class SensorConnectionInfo:
+    """Sensor connection information"""
+    device_id: str
+    status: ConnectionStatus
+    last_received: Optional[datetime]
+    last_weight: Optional[float]
+    connection_time: Optional[datetime]
+    error_message: Optional[str]
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for storage"""
+        return {
+            'device_id': self.device_id,
+            'status': self.status.value,
+            'last_received': self.last_received.isoformat() if self.last_received else None,
+            'last_weight': self.last_weight,
+            'connection_time': self.connection_time.isoformat() if self.connection_time else None,
+            'error_message': self.error_message
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'SensorConnectionInfo':
+        """Create from dictionary"""
+        return cls(
+            device_id=data['device_id'],
+            status=ConnectionStatus(data['status']),
+            last_received=datetime.fromisoformat(data['last_received']) if data.get('last_received') else None,
+            last_weight=data.get('last_weight'),
+            connection_time=datetime.fromisoformat(data['connection_time']) if data.get('connection_time') else None,
+            error_message=data.get('error_message')
+        )
+
+
+@dataclass
+class SimulationConfig:
+    """Configuration for long-term simulation"""
+    duration_days: int  # 7, 14, or 30
+    start_datetime: datetime
+    cats: List[tuple]  # List of (cat_id, scenario) tuples
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for storage"""
+        return {
+            'duration_days': self.duration_days,
+            'start_datetime': self.start_datetime.isoformat(),
+            'cats': [(cat_id, scenario.value if isinstance(scenario, SimulationScenario) else scenario) 
+                     for cat_id, scenario in self.cats]
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'SimulationConfig':
+        """Create from dictionary"""
+        return cls(
+            duration_days=data['duration_days'],
+            start_datetime=datetime.fromisoformat(data['start_datetime']),
+            cats=[(cat_id, SimulationScenario(scenario)) for cat_id, scenario in data['cats']]
+        )
+
+
+@dataclass
+class SimulationResult:
+    """Result of long-term simulation"""
+    config: SimulationConfig
+    events_generated: int
+    alerts_created: int
+    weight_changes: dict  # cat_id -> (start_weight, end_weight, change_rate)
+    baseline_changes: int
+    execution_time: float  # seconds
+    errors: List[str]
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for storage"""
+        return {
+            'config': self.config.to_dict(),
+            'events_generated': self.events_generated,
+            'alerts_created': self.alerts_created,
+            'weight_changes': self.weight_changes,
+            'baseline_changes': self.baseline_changes,
+            'execution_time': self.execution_time,
+            'errors': self.errors
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'SimulationResult':
+        """Create from dictionary"""
+        return cls(
+            config=SimulationConfig.from_dict(data['config']),
+            events_generated=data['events_generated'],
+            alerts_created=data['alerts_created'],
+            weight_changes=data['weight_changes'],
+            baseline_changes=data['baseline_changes'],
+            execution_time=data['execution_time'],
+            errors=data['errors']
+        )
+
+
+@dataclass
+class WeightChangeAlert:
+    """Weight change alert notification"""
+    alert_id: str
+    cat_id: str
+    cat_name: str
+    alert_type: str  # "weight_change"
+    severity: str  # "warning", "critical"
+    message: str
+    details: dict
+    timestamp: datetime
+    weight_change_rate: float
+    time_period_days: int
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for storage"""
+        return {
+            'alert_id': self.alert_id,
+            'cat_id': self.cat_id,
+            'cat_name': self.cat_name,
+            'alert_type': self.alert_type,
+            'severity': self.severity,
+            'message': self.message,
+            'details': self.details,
+            'timestamp': self.timestamp.isoformat(),
+            'weight_change_rate': self.weight_change_rate,
+            'time_period_days': self.time_period_days
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'WeightChangeAlert':
+        """Create from dictionary"""
+        return cls(
+            alert_id=data['alert_id'],
+            cat_id=data['cat_id'],
+            cat_name=data['cat_name'],
+            alert_type=data['alert_type'],
+            severity=data['severity'],
+            message=data['message'],
+            details=data['details'],
+            timestamp=datetime.fromisoformat(data['timestamp']),
+            weight_change_rate=data['weight_change_rate'],
+            time_period_days=data['time_period_days']
         )

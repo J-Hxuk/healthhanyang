@@ -13,7 +13,7 @@ import logging
 
 from ..data.schema import (
     RawSensorData, ProcessedSensorData, Event, CatProfile,
-    Alert, BaselineHistory, EventType
+    Alert, BaselineHistory, EventType, WeightMeasurement, WeightChangeAlert
 )
 
 
@@ -40,6 +40,7 @@ class Database:
         (self.data_dir / "profiles").mkdir(exist_ok=True)
         (self.data_dir / "alerts").mkdir(exist_ok=True)
         (self.data_dir / "baseline").mkdir(exist_ok=True)
+        (self.data_dir / "weight_history").mkdir(exist_ok=True)
     
     def save_raw_sensor_data(self, data: RawSensorData):
         """Save raw sensor data"""
@@ -175,3 +176,98 @@ class Database:
         file_path = self.data_dir / "baseline" / f"{history.id}.json"
         with open(file_path, 'w') as f:
             json.dump(history.to_dict(), f, indent=2)
+
+    
+    def save_weight_measurement(self, measurement: WeightMeasurement):
+        """Save weight measurement"""
+        file_path = self.data_dir / "weight_history" / f"{measurement.measurement_id}.json"
+        with open(file_path, 'w') as f:
+            json.dump(measurement.to_dict(), f, indent=2)
+        logger.info(f"Saved weight measurement for cat {measurement.cat_id}: {measurement.measured_weight:.2f}kg")
+    
+    def get_weight_history(self, cat_id: str, 
+                          start_date: Optional[datetime] = None,
+                          end_date: Optional[datetime] = None) -> List[WeightMeasurement]:
+        """
+        Get weight history for a cat
+        
+        Args:
+            cat_id: Cat ID
+            start_date: Optional start date filter
+            end_date: Optional end date filter
+            
+        Returns:
+            List of weight measurements sorted by timestamp
+        """
+        measurements = []
+        weight_dir = self.data_dir / "weight_history"
+        
+        if not weight_dir.exists():
+            return measurements
+        
+        for file_path in weight_dir.glob("*.json"):
+            try:
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+                    measurement = WeightMeasurement.from_dict(data)
+                    
+                    # Filter by cat_id
+                    if measurement.cat_id != cat_id:
+                        continue
+                    
+                    # Apply date filters
+                    if start_date and measurement.timestamp < start_date:
+                        continue
+                    if end_date and measurement.timestamp > end_date:
+                        continue
+                    
+                    measurements.append(measurement)
+            except Exception as e:
+                logger.error(f"Error loading weight measurement from {file_path}: {e}")
+        
+        # Sort by timestamp (chronological order)
+        measurements.sort(key=lambda m: m.timestamp)
+        
+        return measurements
+    
+    def get_latest_measurement(self, cat_id: str) -> Optional[WeightMeasurement]:
+        """Get most recent weight measurement for a cat"""
+        measurements = self.get_weight_history(cat_id)
+        return measurements[-1] if measurements else None
+    
+    def save_weight_change_alert(self, alert: WeightChangeAlert):
+        """Save weight change alert"""
+        file_path = self.data_dir / "alerts" / f"{alert.alert_id}.json"
+        with open(file_path, 'w') as f:
+            json.dump(alert.to_dict(), f, indent=2)
+        logger.info(f"Saved weight change alert: {alert.severity} for cat {alert.cat_name}")
+    
+    def get_weight_change_alerts(self, cat_id: Optional[str] = None, 
+                                 limit: int = 10) -> List[WeightChangeAlert]:
+        """Get recent weight change alerts"""
+        alerts = []
+        alerts_dir = self.data_dir / "alerts"
+        
+        if not alerts_dir.exists():
+            return alerts
+        
+        for file_path in alerts_dir.glob("*.json"):
+            try:
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+                    # Check if it's a weight change alert
+                    if data.get('alert_type') == 'weight_change':
+                        alert = WeightChangeAlert.from_dict(data)
+                        
+                        # Filter by cat_id if provided
+                        if cat_id and alert.cat_id != cat_id:
+                            continue
+                        
+                        alerts.append(alert)
+            except Exception as e:
+                logger.error(f"Error loading alert from {file_path}: {e}")
+        
+        # Sort by timestamp
+        alerts.sort(key=lambda a: a.timestamp, reverse=True)
+        
+        return alerts[:limit]

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import statistics
 import logging
 
-from ..data.schema import ProcessedSensorData, Event, EventType
+from ..data.schema import ProcessedSensorData, Event, EventType, DataSourceMode
 from config.config import get_config
 
 
@@ -32,17 +32,19 @@ class OngoingEvent:
 class EventDetector:
     """Detects events from weight changes"""
     
-    def __init__(self, device_id: str):
+    def __init__(self, device_id: str, data_source: DataSourceMode = DataSourceMode.SIMULATION):
         """
         Initialize event detector
         
         Args:
             device_id: Device ID for this detector
+            data_source: Data source mode (SIMULATION or SENSOR)
         """
         self.device_id = device_id
         self.config = get_config()
         self.current_event: Optional[OngoingEvent] = None
         self.current_baseline: Optional[float] = None
+        self.data_source = data_source
     
     def update_baseline(self, baseline: float):
         """Update current baseline weight"""
@@ -215,7 +217,8 @@ class EventDetector:
             weight_gain=weight_gain,
             baseline_shift=baseline_shift,
             stability_score=stability_score,
-            confidence_score=0.0  # Will be filled by classifier
+            confidence_score=0.0,  # Will be filled by classifier
+            data_source=self.data_source
         )
         
         logger.debug(f"Event finalized: duration={duration:.1f}s, weight_gain={weight_gain:.3f}kg, stability={stability_score:.2f}")

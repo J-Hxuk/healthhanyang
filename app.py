@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 
 from src.data.receiver import SensorDataReceiver
-from src.data.schema import CatProfile, EventType
+from src.data.schema import CatProfile, EventType, DataSourceMode, SimulationScenario, SimulationConfig
 from src.preprocessing.filter import SensorPreprocessor
 from src.preprocessing.baseline import BaselineManager
 from src.events.detector import EventDetector
@@ -25,6 +25,14 @@ from src.events.classifier import EventClassifier
 from src.identification.cat_identifier import CatIdentifier
 from src.storage.database import Database
 from src.analysis.health_monitor import HealthMonitor
+from src.tracking.weight_tracker import WeightTracker
+from src.alerts.alert_generator import AlertGenerator
+from src.simulation import (
+    DataSourceInterface, SimulationGenerator, BaselineSimulator, LongTermSimulator
+)
+from src.ui.weight_tracking_page import render_weight_tracking_page
+from src.ui.long_term_simulation_page import render_long_term_simulation_page
+from src.ui.baseline_history_page import render_baseline_history_page
 from config.config import get_config
 
 # Page configuration
@@ -349,10 +357,10 @@ if 'preprocessor' not in st.session_state:
     st.session_state.preprocessor = SensorPreprocessor()
 
 if 'baseline_manager' not in st.session_state:
-    st.session_state.baseline_manager = BaselineManager("PAD_001")
+    st.session_state.baseline_manager = BaselineManager("PAD_001", st.session_state.db, DataSourceMode.SIMULATION)
 
 if 'event_detector' not in st.session_state:
-    st.session_state.event_detector = EventDetector("PAD_001")
+    st.session_state.event_detector = EventDetector("PAD_001", DataSourceMode.SIMULATION)
 
 if 'classifier' not in st.session_state:
     st.session_state.classifier = EventClassifier()
@@ -363,14 +371,53 @@ if 'identifier' not in st.session_state:
 if 'health_monitor' not in st.session_state:
     st.session_state.health_monitor = HealthMonitor()
 
+if 'weight_tracker' not in st.session_state:
+    st.session_state.weight_tracker = WeightTracker(st.session_state.db)
+
+if 'alert_generator' not in st.session_state:
+    st.session_state.alert_generator = AlertGenerator(st.session_state.db, st.session_state.weight_tracker)
+
+if 'simulation_generator' not in st.session_state:
+    st.session_state.simulation_generator = SimulationGenerator("PAD_001")
+
+if 'baseline_simulator' not in st.session_state:
+    st.session_state.baseline_simulator = BaselineSimulator(st.session_state.baseline_manager)
+
+if 'long_term_simulator' not in st.session_state:
+    st.session_state.long_term_simulator = LongTermSimulator(
+        st.session_state.db,
+        st.session_state.baseline_simulator,
+        st.session_state.simulation_generator
+    )
+
+if 'data_source_interface' not in st.session_state:
+    st.session_state.data_source_interface = DataSourceInterface()
+    st.session_state.data_source_interface.set_mode(DataSourceMode.SIMULATION)
+    st.session_state.data_source_interface.set_simulation_generator(st.session_state.simulation_generator)
+
 if 'config' not in st.session_state:
     st.session_state.config = get_config()
 
 # Sidebar navigation
 st.sidebar.title("🐱 고양이 건강 코파일럿")
+
+# Data source indicator
+data_source = st.session_state.data_source_interface.mode
+if data_source == DataSourceMode.SIMULATION:
+    st.sidebar.info("📊 시뮬레이션 모드")
+else:
+    conn_status = st.session_state.data_source_interface.get_connection_status()
+    if conn_status.value == "connected":
+        st.sidebar.success("📡 센서 모드 (연결됨)")
+    elif conn_status.value == "disconnected":
+        st.sidebar.warning("📡 센서 모드 (연결 끊김)")
+    else:
+        st.sidebar.error("📡 센서 모드 (오류)")
+
 page = st.sidebar.radio(
     "메뉴",
-    ["홈 대시보드", "이벤트 타임라인", "고양이 프로필", "실시간 시뮬레이션", "설정"]
+    ["홈 대시보드", "체중 추적", "장기 시뮬레이션", "기준선 히스토리", 
+     "이벤트 타임라인", "고양이 프로필", "실시간 시뮬레이션", "설정"]
 )
 
 # Main content based on selected page
@@ -680,6 +727,15 @@ elif page == "고양이 프로필":
                                 st.rerun()
     else:
         st.info("아직 고양이 프로필이 없습니다. 위에서 첫 번째 고양이를 추가하세요!")
+
+elif page == "체중 추적":
+    render_weight_tracking_page(st.session_state.db, st.session_state.weight_tracker)
+
+elif page == "장기 시뮬레이션":
+    render_long_term_simulation_page(st.session_state.db, st.session_state.long_term_simulator)
+
+elif page == "기준선 히스토리":
+    render_baseline_history_page(st.session_state.baseline_manager, st.session_state.db)
 
 elif page == "실시간 시뮬레이션":
     st.title("🎮 실시간 시뮬레이션")
