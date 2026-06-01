@@ -33,6 +33,7 @@ from src.simulation import (
 from src.ui.weight_tracking_page import render_weight_tracking_page
 from src.ui.long_term_simulation_page import render_long_term_simulation_page
 from src.ui.baseline_history_page import render_baseline_history_page
+from src.ui.demo_mode_page import render_demo_mode_page
 from config.config import get_config
 
 # Page configuration
@@ -436,7 +437,7 @@ if st.session_state.admin_mode:
             st.sidebar.error("📡 센서 모드 (오류)")
 
 # Menu items - show simulation pages only in admin mode
-menu_items = ["홈 대시보드", "체중 추적", "기준선 히스토리", 
+menu_items = ["홈 대시보드", "시연 모드", "체중 추적", "기준선 히스토리", 
               "이벤트 타임라인", "고양이 프로필", "설정"]
 
 if st.session_state.admin_mode:
@@ -753,6 +754,15 @@ elif page == "고양이 프로필":
                                 st.rerun()
     else:
         st.info("아직 고양이 프로필이 없습니다. 위에서 첫 번째 고양이를 추가하세요!")
+
+elif page == "시연 모드":
+    render_demo_mode_page(
+        st.session_state.db,
+        st.session_state.event_detector,
+        st.session_state.classifier,
+        st.session_state.identifier,
+        st.session_state.baseline_manager
+    )
 
 elif page == "체중 추적":
     render_weight_tracking_page(st.session_state.db, st.session_state.weight_tracker)
