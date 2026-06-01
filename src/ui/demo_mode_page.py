@@ -54,11 +54,6 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
     💡 그래프에 실시간 무게 변화가 표시되며, ±10g 노이즈가 자동 반영됩니다.
     """)
     
-    st.info("""
-    💡 **노이즈 반영**: ±10g 센서 노이즈 자동 추가 (실제 센서처럼)
-    """)
-    """)
-    
     # Initialize session state
     if 'demo_running' not in st.session_state:
         st.session_state.demo_running = False
