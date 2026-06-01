@@ -437,7 +437,7 @@ if st.session_state.admin_mode:
             st.sidebar.error("📡 센서 모드 (오류)")
 
 # Menu items - show simulation pages only in admin mode
-menu_items = ["홈 대시보드", "시연 모드", "체중 추적", "기준선 히스토리", 
+menu_items = ["홈 대시보드", "실시간 그래프", "체중 추적", "기준선 히스토리", 
               "이벤트 타임라인", "고양이 프로필", "설정"]
 
 if st.session_state.admin_mode:
@@ -755,7 +755,7 @@ elif page == "고양이 프로필":
     else:
         st.info("아직 고양이 프로필이 없습니다. 위에서 첫 번째 고양이를 추가하세요!")
 
-elif page == "시연 모드":
+elif page == "실시간 그래프":
     render_demo_mode_page(
         st.session_state.db,
         st.session_state.event_detector,

@@ -39,7 +39,7 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
         identifier: CatIdentifier instance
         baseline_manager: BaselineManager instance
     """
-    st.title("🎬 시연 모드 - 실시간 무게 감지")
+    st.title("📊 실시간 그래프 - 무게 감지")
     
     st.info("""
     **📹 시제품 시연 가이드**
