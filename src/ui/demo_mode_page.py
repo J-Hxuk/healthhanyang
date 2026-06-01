@@ -14,13 +14,13 @@ from collections import deque
 from src.data.schema import EventType
 
 
-def add_noise(value: float, noise_range: float = 0.005) -> float:
+def add_noise(value: float, noise_range: float = 0.01) -> float:
     """
     Add realistic sensor noise to weight value
     
     Args:
         value: Base weight value
-        noise_range: Noise range in kg (default: ±5g)
+        noise_range: Noise range in kg (default: ±10g)
     
     Returns:
         Weight with noise added
@@ -45,22 +45,18 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
     **📹 시제품 시연 가이드**
     
     1. **기준선 설정**: 빈 패드 + 화장실 무게 입력 후 '기준선 설정' 클릭
-    2. **시연 시작**: '실시간 감지 시작' 버튼 클릭
-    3. **물체 올리기**: 패드 위에 3kg 물체 올리기 (고양이 입실 시뮬레이션)
-    4. **배변 시뮬레이션**: 500g 물체 추가 (배변)
-    5. **물체 내리기**: 3kg 물체만 제거 (고양이 퇴실, 배변물 500g 남음)
-    6. **감지 중지**: '감지 중지' 클릭 → 자동으로 300g 청소 시뮬레이션 후 10초간 빈 패드 표시
-    7. **결과 확인**: 자동으로 이벤트 감지 및 분류
+    2. **고양이 무게 설정**: 시뮬레이션할 고양이 체중 입력 (예: 3kg)
+    3. **시연 시작**: '실시간 감지 시작' 버튼 클릭 → 자동으로 고양이 무게가 추가됨
+    4. **배변 시뮬레이션**: 500g 물체 추가 (수동 무게 입력)
+    5. **감지 중지**: '감지 중지' 클릭 → 고양이가 나가면서 튀는 노이즈 반영 후 자동 종료
+    6. **결과 확인**: 자동으로 이벤트 감지 및 분류
     
-    💡 그래프에 실시간 무게 변화가 표시되며, ±5g 노이즈가 자동 반영됩니다.
+    💡 그래프에 실시간 무게 변화가 표시되며, ±10g 노이즈가 자동 반영됩니다.
     """)
     
-    st.info(f"""
-    💡 **노이즈 반영**: ±5g 센서 노이즈 자동 추가 (실제 센서처럼)
+    st.info("""
+    💡 **노이즈 반영**: ±10g 센서 노이즈 자동 추가 (실제 센서처럼)
     """)
-    
-    st.info(f"""
-    💡 **그래프에 실시간 무게 변화가 표시되며, ±5g 노이즈가 자동 반영됩니다.**
     """)
     
     # Initialize session state
@@ -76,12 +72,12 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
         st.session_state.demo_event_started = False
     if 'demo_last_weight' not in st.session_state:
         st.session_state.demo_last_weight = 0.0
-    if 'demo_cleanup_mode' not in st.session_state:
-        st.session_state.demo_cleanup_mode = False
-    if 'demo_cleanup_counter' not in st.session_state:
-        st.session_state.demo_cleanup_counter = 0
-    if 'demo_cleanup_weight' not in st.session_state:
-        st.session_state.demo_cleanup_weight = 0.0
+    if 'demo_cat_weight' not in st.session_state:
+        st.session_state.demo_cat_weight = 3.0
+    if 'demo_exit_mode' not in st.session_state:
+        st.session_state.demo_exit_mode = False
+    if 'demo_exit_counter' not in st.session_state:
+        st.session_state.demo_exit_counter = 0
     
     # Settings
     col1, col2 = st.columns(2)
@@ -99,6 +95,17 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
             key="demo_baseline_input"
         )
         
+        cat_weight = st.number_input(
+            "고양이 체중 (kg)",
+            min_value=2.0,
+            max_value=10.0,
+            value=st.session_state.demo_cat_weight,
+            step=0.1,
+            help="시뮬레이션할 고양이의 체중",
+            key="demo_cat_weight_input"
+        )
+        st.session_state.demo_cat_weight = cat_weight
+        
         if st.button("🔧 기준선 설정", use_container_width=True):
             st.session_state.demo_baseline = baseline_weight
             baseline_manager.update_baseline(baseline_weight, "user_reset")
@@ -107,6 +114,7 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
         
         if st.session_state.demo_baseline:
             st.metric("현재 기준선", f"{st.session_state.demo_baseline:.2f}kg")
+            st.metric("고양이 체중", f"{cat_weight:.2f}kg")
     
     with col2:
         st.subheader("🎮 제어")
@@ -120,24 +128,25 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
                 st.session_state.demo_weights.clear()
                 st.session_state.demo_timestamps.clear()
                 st.session_state.demo_event_started = False
-                st.session_state.demo_last_weight = st.session_state.demo_baseline
+                st.session_state.demo_exit_mode = False
+                st.session_state.demo_exit_counter = 0
+                # Start with baseline + cat weight
+                st.session_state.demo_last_weight = st.session_state.demo_baseline + st.session_state.demo_cat_weight
                 st.rerun()
         else:
             if st.button("⏹️ 감지 중지", use_container_width=True, type="secondary"):
-                # Start cleanup mode instead of stopping immediately
-                st.session_state.demo_cleanup_mode = True
-                st.session_state.demo_cleanup_counter = 0
-                # Remove 300g from current weight for cleanup simulation
-                st.session_state.demo_cleanup_weight = st.session_state.demo_last_weight - 0.3
+                # Start exit mode (cat leaving with spike noise)
+                st.session_state.demo_exit_mode = True
+                st.session_state.demo_exit_counter = 0
                 st.rerun()
         
         if st.session_state.demo_running:
-            if st.session_state.demo_cleanup_mode:
-                st.warning(f"🧹 **청소 중** ({st.session_state.demo_cleanup_counter}/20)")
-                st.caption("배변물 제거 후 빈 패드 상태 확인 중...")
+            if st.session_state.demo_exit_mode:
+                st.warning(f"🚪 **고양이 퇴실 중** ({st.session_state.demo_exit_counter}/5)")
+                st.caption("고양이가 나가면서 일시적으로 무게 증가...")
             else:
                 st.success("🟢 **실시간 감지 중**")
-                st.caption("패드 위에 물체를 올리거나 내려보세요")
+                st.caption("배변 시뮬레이션: 수동 무게 입력으로 500g 추가")
         else:
             st.info("⚪ **대기 중**")
     
@@ -164,14 +173,16 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
     
     # Real-time monitoring loop
     if st.session_state.demo_running:
-        # Cleanup mode: simulate removing waste (300g) and showing empty pad for 10 seconds
-        if st.session_state.demo_cleanup_mode:
-            st.session_state.demo_cleanup_counter += 1
+        # Exit mode: simulate cat leaving with spike noise
+        if st.session_state.demo_exit_mode:
+            st.session_state.demo_exit_counter += 1
             
-            # For first 10 readings (5 seconds): show cleanup weight (baseline + 200g remaining)
-            if st.session_state.demo_cleanup_counter <= 10:
-                current_weight = st.session_state.demo_cleanup_weight
-                noisy_weight = add_noise(current_weight, noise_range=0.005)
+            # For first 3 readings (1.5 seconds): show spike noise (cat pushing down while leaving)
+            if st.session_state.demo_exit_counter <= 3:
+                # Add spike noise (cat pushing down)
+                spike_noise = random.uniform(0.2, 0.5)  # 200-500g spike
+                current_weight = st.session_state.demo_last_weight + spike_noise
+                noisy_weight = add_noise(current_weight, noise_range=0.01)
                 
                 now = datetime.now()
                 st.session_state.demo_weights.append(noisy_weight)
@@ -182,20 +193,20 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
                     event_detector.current_event.weights.append(noisy_weight)
                     event_detector.current_event.timestamps.append(now)
                 
-                status_placeholder.warning(f"🧹 **청소 중** - 배변물 제거: {noisy_weight:.3f}kg")
+                status_placeholder.warning(f"🚪 **고양이 퇴실 중** - 일시적 무게 증가: {noisy_weight:.3f}kg")
             
-            # For next 10 readings (5 seconds): show baseline (empty pad)
-            elif st.session_state.demo_cleanup_counter <= 20:
+            # For next 2 readings (1 second): return to baseline
+            elif st.session_state.demo_exit_counter <= 5:
                 current_weight = st.session_state.demo_baseline
-                noisy_weight = add_noise(current_weight, noise_range=0.005)
+                noisy_weight = add_noise(current_weight, noise_range=0.01)
                 
                 now = datetime.now()
                 st.session_state.demo_weights.append(noisy_weight)
                 st.session_state.demo_timestamps.append(now)
                 
-                status_placeholder.success(f"✅ **빈 패드 확인 중** - 무게: {noisy_weight:.3f}kg (기준선: {st.session_state.demo_baseline:.3f}kg)")
+                status_placeholder.success(f"✅ **기준선 복귀** - 무게: {noisy_weight:.3f}kg")
             
-            # After 20 readings (10 seconds total): finalize event and stop
+            # After 5 readings (2.5 seconds total): finalize event and stop
             else:
                 # Finalize event
                 if st.session_state.demo_event_started and event_detector.current_event:
@@ -223,8 +234,8 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
                 
                 # Stop demo
                 st.session_state.demo_running = False
-                st.session_state.demo_cleanup_mode = False
-                st.session_state.demo_cleanup_counter = 0
+                st.session_state.demo_exit_mode = False
+                st.session_state.demo_exit_counter = 0
                 st.rerun()
         
         # Normal monitoring mode
@@ -234,7 +245,7 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
             current_weight = st.session_state.demo_last_weight
             
             # Add noise to simulate real sensor
-            noisy_weight = add_noise(current_weight, noise_range=0.005)
+            noisy_weight = add_noise(current_weight, noise_range=0.01)
             
             # Record timestamp and weight
             now = datetime.now()
