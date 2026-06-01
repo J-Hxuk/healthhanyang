@@ -401,25 +401,49 @@ if 'config' not in st.session_state:
 # Sidebar navigation
 st.sidebar.title("🐱 고양이 건강 코파일럿")
 
-# Data source indicator (hidden for production demo)
-# data_source = st.session_state.data_source_interface.mode
-# if data_source == DataSourceMode.SIMULATION:
-#     st.sidebar.info("📊 시뮬레이션 모드")
-# else:
-#     conn_status = st.session_state.data_source_interface.get_connection_status()
-#     if conn_status.value == "connected":
-#         st.sidebar.success("📡 센서 모드 (연결됨)")
-#     elif conn_status.value == "disconnected":
-#         st.sidebar.warning("📡 센서 모드 (연결 끊김)")
-#     else:
-#         st.sidebar.error("📡 센서 모드 (오류)")
+# Admin mode toggle
+if 'admin_mode' not in st.session_state:
+    st.session_state.admin_mode = False
 
-page = st.sidebar.radio(
-    "메뉴",
-    ["홈 대시보드", "체중 추적", "기준선 히스토리", 
-     "이벤트 타임라인", "고양이 프로필", "설정"]
-    # Hidden for production demo: "장기 시뮬레이션", "실시간 시뮬레이션"
-)
+with st.sidebar.expander("🔐 관리자 모드"):
+    if not st.session_state.admin_mode:
+        admin_password = st.text_input("비밀번호", type="password", key="admin_pw")
+        if st.button("로그인", key="admin_login"):
+            if admin_password == "admin1234":  # 비밀번호 설정
+                st.session_state.admin_mode = True
+                st.success("관리자 모드 활성화")
+                st.rerun()
+            else:
+                st.error("비밀번호가 틀렸습니다")
+    else:
+        st.success("✅ 관리자 모드 활성화됨")
+        if st.button("로그아웃", key="admin_logout"):
+            st.session_state.admin_mode = False
+            st.rerun()
+
+# Data source indicator (only in admin mode)
+if st.session_state.admin_mode:
+    data_source = st.session_state.data_source_interface.mode
+    if data_source == DataSourceMode.SIMULATION:
+        st.sidebar.info("📊 시뮬레이션 모드")
+    else:
+        conn_status = st.session_state.data_source_interface.get_connection_status()
+        if conn_status.value == "connected":
+            st.sidebar.success("📡 센서 모드 (연결됨)")
+        elif conn_status.value == "disconnected":
+            st.sidebar.warning("📡 센서 모드 (연결 끊김)")
+        else:
+            st.sidebar.error("📡 센서 모드 (오류)")
+
+# Menu items - show simulation pages only in admin mode
+menu_items = ["홈 대시보드", "체중 추적", "기준선 히스토리", 
+              "이벤트 타임라인", "고양이 프로필", "설정"]
+
+if st.session_state.admin_mode:
+    menu_items.insert(2, "장기 시뮬레이션")
+    menu_items.insert(4, "실시간 시뮬레이션")
+
+page = st.sidebar.radio("메뉴", menu_items)
 
 # Main content based on selected page
 if page == "홈 대시보드":
@@ -528,10 +552,11 @@ if page == "홈 대시보드":
         else:
             st.success("✅ 모든 고양이가 정상 패턴을 보이고 있습니다")
     
-    # Simulator on home dashboard (hidden for production demo)
-    # st.markdown("---")
-    # st.subheader("🎮 빠른 시뮬레이션")
-    # render_simulator(show_chart=False)
+    # Simulator on home dashboard (only in admin mode)
+    if st.session_state.admin_mode:
+        st.markdown("---")
+        st.subheader("🎮 빠른 시뮬레이션")
+        render_simulator(show_chart=False)
     
     # Recent events
     st.markdown("---")
@@ -732,21 +757,19 @@ elif page == "고양이 프로필":
 elif page == "체중 추적":
     render_weight_tracking_page(st.session_state.db, st.session_state.weight_tracker)
 
-# Hidden for production demo
-# elif page == "장기 시뮬레이션":
-#     render_long_term_simulation_page(st.session_state.db, st.session_state.long_term_simulator)
+elif page == "장기 시뮬레이션":
+    render_long_term_simulation_page(st.session_state.db, st.session_state.long_term_simulator)
 
 elif page == "기준선 히스토리":
     render_baseline_history_page(st.session_state.baseline_manager, st.session_state.db)
 
-# Hidden for production demo
-# elif page == "실시간 시뮬레이션":
-#     st.title("🎮 실시간 시뮬레이션")
-#     
-#     st.write("실제 센서가 무게를 감지하는 것을 시뮬레이션합니다.")
-#     st.info("💡 **사용법**: 체중과 무게 변동 범위를 설정하고 '무게 감지됨' 버튼을 누르세요. 시간 버튼(+10초/+30초/+60초)으로 시간을 경과시킨 후 '무게 감지 안됨' 버튼을 누르면 프로그램이 자동으로 이벤트 유형을 판단합니다.")
-#     
-#     render_simulator(show_chart=False)
+elif page == "실시간 시뮬레이션":
+    st.title("🎮 실시간 시뮬레이션")
+    
+    st.write("실제 센서가 무게를 감지하는 것을 시뮬레이션합니다.")
+    st.info("💡 **사용법**: 체중과 무게 변동 범위를 설정하고 '무게 감지됨' 버튼을 누르세요. 시간 버튼(+10초/+30초/+60초)으로 시간을 경과시킨 후 '무게 감지 안됨' 버튼을 누르면 프로그램이 자동으로 이벤트 유형을 판단합니다.")
+    
+    render_simulator(show_chart=False)
 
 elif page == "설정":
     st.title("⚙️ 설정")
