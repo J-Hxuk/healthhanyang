@@ -201,7 +201,7 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
     
     # Real-time monitoring loop
     if st.session_state.demo_running:
-        # Exit mode: simulate cat leaving with spike noise (compressed to 3 steps)
+        # Exit mode: simulate cat leaving with spike noise (5 steps total)
         if st.session_state.demo_exit_mode:
             st.session_state.demo_exit_counter += 1
             
@@ -221,7 +221,7 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
                     event_detector.current_event.weights.append(noisy_weight)
                     event_detector.current_event.timestamps.append(now)
             
-            # Step 3: Return to baseline and finalize
+            # Step 3: Return to baseline and finalize event
             elif st.session_state.demo_exit_counter == 3:
                 current_weight = st.session_state.demo_baseline
                 noisy_weight = add_noise(current_weight, noise_range=0.01)
@@ -252,7 +252,18 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
                     db.save_event(event)
                     
                     st.session_state.demo_event_started = False
+            
+            # Step 4-7: Show baseline for 2 more seconds (4 readings)
+            elif st.session_state.demo_exit_counter <= 7:
+                current_weight = st.session_state.demo_baseline
+                noisy_weight = add_noise(current_weight, noise_range=0.01)
                 
+                now = datetime.now()
+                st.session_state.demo_weights.append(noisy_weight)
+                st.session_state.demo_timestamps.append(now)
+            
+            # After 7 readings (3.5 seconds total): stop
+            else:
                 # Stop demo
                 st.session_state.demo_running = False
                 st.session_state.demo_exit_mode = False
