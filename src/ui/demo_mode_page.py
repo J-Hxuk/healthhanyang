@@ -14,13 +14,13 @@ from collections import deque
 from src.data.schema import EventType
 
 
-def add_noise(value: float, noise_range: float = 0.03) -> float:
+def add_noise(value: float, noise_range: float = 0.005) -> float:
     """
     Add realistic sensor noise to weight value
     
     Args:
         value: Base weight value
-        noise_range: Noise range in kg (default: ±30g)
+        noise_range: Noise range in kg (default: ±5g)
     
     Returns:
         Weight with noise added
@@ -49,9 +49,18 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
     3. **물체 올리기**: 패드 위에 3kg 물체 올리기 (고양이 입실 시뮬레이션)
     4. **배변 시뮬레이션**: 500g 물체 추가 (배변)
     5. **물체 내리기**: 3kg 물체만 제거 (고양이 퇴실, 배변물 500g 남음)
-    6. **결과 확인**: 자동으로 이벤트 감지 및 분류
+    6. **감지 중지**: '감지 중지' 클릭 → 자동으로 300g 청소 시뮬레이션 후 10초간 빈 패드 표시
+    7. **결과 확인**: 자동으로 이벤트 감지 및 분류
     
-    💡 그래프에 실시간 무게 변화가 표시되며, ±30g 노이즈가 자동 반영됩니다.
+    💡 그래프에 실시간 무게 변화가 표시되며, ±5g 노이즈가 자동 반영됩니다.
+    """)
+    
+    st.info(f"""
+    💡 **노이즈 반영**: ±5g 센서 노이즈 자동 추가 (실제 센서처럼)
+    """)
+    
+    st.info(f"""
+    💡 **그래프에 실시간 무게 변화가 표시되며, ±5g 노이즈가 자동 반영됩니다.**
     """)
     
     # Initialize session state
@@ -67,6 +76,12 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
         st.session_state.demo_event_started = False
     if 'demo_last_weight' not in st.session_state:
         st.session_state.demo_last_weight = 0.0
+    if 'demo_cleanup_mode' not in st.session_state:
+        st.session_state.demo_cleanup_mode = False
+    if 'demo_cleanup_counter' not in st.session_state:
+        st.session_state.demo_cleanup_counter = 0
+    if 'demo_cleanup_weight' not in st.session_state:
+        st.session_state.demo_cleanup_weight = 0.0
     
     # Settings
     col1, col2 = st.columns(2)
@@ -109,37 +124,20 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
                 st.rerun()
         else:
             if st.button("⏹️ 감지 중지", use_container_width=True, type="secondary"):
-                st.session_state.demo_running = False
-                
-                # Finalize event if one is in progress
-                if st.session_state.demo_event_started and event_detector.current_event:
-                    baseline = baseline_manager.current_baseline
-                    event = event_detector._finalize_event(baseline, None)
-                    event_detector.current_event = None
-                    
-                    # Classify event
-                    event_type, confidence = classifier.classify(event)
-                    event.event_type = event_type
-                    event.confidence_score = confidence
-                    
-                    # Identify cat if it's a cat visit
-                    if event_type == EventType.CAT_VISIT:
-                        profiles = db.get_all_cat_profiles()
-                        if profiles:
-                            cat_id, id_confidence = identifier.identify(event, profiles)
-                            event.cat_id = cat_id
-                    
-                    # Save event
-                    db.save_event(event)
-                    
-                    st.success(f"🎉 이벤트 기록 완료: {event_type.value}")
-                    st.session_state.demo_event_started = False
-                
+                # Start cleanup mode instead of stopping immediately
+                st.session_state.demo_cleanup_mode = True
+                st.session_state.demo_cleanup_counter = 0
+                # Remove 300g from current weight for cleanup simulation
+                st.session_state.demo_cleanup_weight = st.session_state.demo_last_weight - 0.3
                 st.rerun()
         
         if st.session_state.demo_running:
-            st.success("🟢 **실시간 감지 중**")
-            st.caption("패드 위에 물체를 올리거나 내려보세요")
+            if st.session_state.demo_cleanup_mode:
+                st.warning(f"🧹 **청소 중** ({st.session_state.demo_cleanup_counter}/20)")
+                st.caption("배변물 제거 후 빈 패드 상태 확인 중...")
+            else:
+                st.success("🟢 **실시간 감지 중**")
+                st.caption("패드 위에 물체를 올리거나 내려보세요")
         else:
             st.info("⚪ **대기 중**")
     
@@ -166,51 +164,116 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
     
     # Real-time monitoring loop
     if st.session_state.demo_running:
-        # In a real scenario, this would read from the sensor
-        # For demo, we'll use the manual input or simulate
-        current_weight = st.session_state.demo_last_weight
-        
-        # Add noise to simulate real sensor
-        noisy_weight = add_noise(current_weight, noise_range=0.03)
-        
-        # Record timestamp and weight
-        now = datetime.now()
-        st.session_state.demo_weights.append(noisy_weight)
-        st.session_state.demo_timestamps.append(now)
-        
-        # Detect weight change (event detection)
-        baseline = st.session_state.demo_baseline
-        weight_diff = noisy_weight - baseline
-        
-        # Event detection logic
-        if not st.session_state.demo_event_started and abs(weight_diff) > 0.5:
-            # Event started
-            st.session_state.demo_event_started = True
+        # Cleanup mode: simulate removing waste (300g) and showing empty pad for 10 seconds
+        if st.session_state.demo_cleanup_mode:
+            st.session_state.demo_cleanup_counter += 1
             
-            import uuid
-            from src.events.detector import OngoingEvent
+            # For first 10 readings (5 seconds): show cleanup weight (baseline + 200g remaining)
+            if st.session_state.demo_cleanup_counter <= 10:
+                current_weight = st.session_state.demo_cleanup_weight
+                noisy_weight = add_noise(current_weight, noise_range=0.005)
+                
+                now = datetime.now()
+                st.session_state.demo_weights.append(noisy_weight)
+                st.session_state.demo_timestamps.append(now)
+                
+                # Add to event if still ongoing
+                if st.session_state.demo_event_started and event_detector.current_event:
+                    event_detector.current_event.weights.append(noisy_weight)
+                    event_detector.current_event.timestamps.append(now)
+                
+                status_placeholder.warning(f"🧹 **청소 중** - 배변물 제거: {noisy_weight:.3f}kg")
             
-            event_detector.current_event = OngoingEvent(
-                event_id=str(uuid.uuid4()),
-                device_id="PAD_001",
-                start_time=now,
-                baseline_before=baseline,
-                weights=[noisy_weight],
-                timestamps=[now]
-            )
+            # For next 10 readings (5 seconds): show baseline (empty pad)
+            elif st.session_state.demo_cleanup_counter <= 20:
+                current_weight = st.session_state.demo_baseline
+                noisy_weight = add_noise(current_weight, noise_range=0.005)
+                
+                now = datetime.now()
+                st.session_state.demo_weights.append(noisy_weight)
+                st.session_state.demo_timestamps.append(now)
+                
+                status_placeholder.success(f"✅ **빈 패드 확인 중** - 무게: {noisy_weight:.3f}kg (기준선: {st.session_state.demo_baseline:.3f}kg)")
             
-            status_placeholder.success(f"🟢 **이벤트 감지 시작** - 무게 변화: {weight_diff:+.3f}kg")
+            # After 20 readings (10 seconds total): finalize event and stop
+            else:
+                # Finalize event
+                if st.session_state.demo_event_started and event_detector.current_event:
+                    baseline = baseline_manager.current_baseline
+                    event = event_detector._finalize_event(baseline, None)
+                    event_detector.current_event = None
+                    
+                    # Classify event
+                    event_type, confidence = classifier.classify(event)
+                    event.event_type = event_type
+                    event.confidence_score = confidence
+                    
+                    # Identify cat if it's a cat visit
+                    if event_type == EventType.CAT_VISIT:
+                        profiles = db.get_all_cat_profiles()
+                        if profiles:
+                            cat_id, id_confidence = identifier.identify(event, profiles)
+                            event.cat_id = cat_id
+                    
+                    # Save event
+                    db.save_event(event)
+                    
+                    status_placeholder.success(f"🎉 이벤트 기록 완료: {event_type.value}")
+                    st.session_state.demo_event_started = False
+                
+                # Stop demo
+                st.session_state.demo_running = False
+                st.session_state.demo_cleanup_mode = False
+                st.session_state.demo_cleanup_counter = 0
+                st.rerun()
         
-        elif st.session_state.demo_event_started and event_detector.current_event:
-            # Event ongoing - add data point
-            event_detector.current_event.weights.append(noisy_weight)
-            event_detector.current_event.timestamps.append(now)
-            
-            duration = (now - event_detector.current_event.start_time).total_seconds()
-            status_placeholder.info(f"⏱️ **이벤트 진행 중** - 지속시간: {duration:.1f}초 | 현재 무게: {noisy_weight:.3f}kg")
-        
+        # Normal monitoring mode
         else:
-            status_placeholder.info(f"⚪ **대기 중** - 현재 무게: {noisy_weight:.3f}kg | 기준선: {baseline:.3f}kg")
+            # In a real scenario, this would read from the sensor
+            # For demo, we'll use the manual input or simulate
+            current_weight = st.session_state.demo_last_weight
+            
+            # Add noise to simulate real sensor
+            noisy_weight = add_noise(current_weight, noise_range=0.005)
+            
+            # Record timestamp and weight
+            now = datetime.now()
+            st.session_state.demo_weights.append(noisy_weight)
+            st.session_state.demo_timestamps.append(now)
+            
+            # Detect weight change (event detection)
+            baseline = st.session_state.demo_baseline
+            weight_diff = noisy_weight - baseline
+            
+            # Event detection logic
+            if not st.session_state.demo_event_started and abs(weight_diff) > 0.5:
+                # Event started
+                st.session_state.demo_event_started = True
+                
+                import uuid
+                from src.events.detector import OngoingEvent
+                
+                event_detector.current_event = OngoingEvent(
+                    event_id=str(uuid.uuid4()),
+                    device_id="PAD_001",
+                    start_time=now,
+                    baseline_before=baseline,
+                    weights=[noisy_weight],
+                    timestamps=[now]
+                )
+                
+                status_placeholder.success(f"🟢 **이벤트 감지 시작** - 무게 변화: {weight_diff:+.3f}kg")
+            
+            elif st.session_state.demo_event_started and event_detector.current_event:
+                # Event ongoing - add data point
+                event_detector.current_event.weights.append(noisy_weight)
+                event_detector.current_event.timestamps.append(now)
+                
+                duration = (now - event_detector.current_event.start_time).total_seconds()
+                status_placeholder.info(f"⏱️ **이벤트 진행 중** - 지속시간: {duration:.1f}초 | 현재 무게: {noisy_weight:.3f}kg")
+            
+            else:
+                status_placeholder.info(f"⚪ **대기 중** - 현재 무게: {noisy_weight:.3f}kg | 기준선: {baseline:.3f}kg")
         
         # Create chart
         if len(st.session_state.demo_weights) > 0:
