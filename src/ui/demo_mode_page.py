@@ -147,10 +147,43 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
     
     # Real-time chart
     st.markdown("---")
-    st.subheader("📊 실시간 무게 그래프")
+    
+    # Chart and control in columns
+    chart_col, control_col = st.columns([4, 1])
+    
+    with chart_col:
+        st.subheader("📊 실시간 무게 그래프")
+    
+    with control_col:
+        st.write("")  # Spacing
+        st.write("")  # Spacing
+        if not st.session_state.demo_running:
+            if st.button("▶️ 실시간 감지", 
+                        use_container_width=True,
+                        disabled=st.session_state.demo_baseline is None,
+                        type="primary",
+                        key="chart_start_btn"):
+                st.session_state.demo_running = True
+                st.session_state.demo_weights.clear()
+                st.session_state.demo_timestamps.clear()
+                st.session_state.demo_event_started = False
+                st.session_state.demo_exit_mode = False
+                st.session_state.demo_exit_counter = 0
+                # Start with baseline + cat weight
+                st.session_state.demo_last_weight = st.session_state.demo_baseline + st.session_state.demo_cat_weight
+                st.rerun()
+        else:
+            if st.button("⏹️ 감지 중지", 
+                        use_container_width=True, 
+                        type="secondary",
+                        key="chart_stop_btn"):
+                # Start exit mode (cat leaving with spike noise)
+                st.session_state.demo_exit_mode = True
+                st.session_state.demo_exit_counter = 0
+                st.rerun()
     
     chart_placeholder = st.empty()
-    status_placeholder = st.empty()
+    # Status placeholder removed - no status messages shown
     
     # Manual weight input for testing without actual sensor
     with st.expander("🔧 수동 무게 입력 (테스트용)"):
@@ -168,12 +201,12 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
     
     # Real-time monitoring loop
     if st.session_state.demo_running:
-        # Exit mode: simulate cat leaving with spike noise
+        # Exit mode: simulate cat leaving with spike noise (compressed to 3 steps)
         if st.session_state.demo_exit_mode:
             st.session_state.demo_exit_counter += 1
             
-            # For first 3 readings (1.5 seconds): show spike noise (cat pushing down while leaving)
-            if st.session_state.demo_exit_counter <= 3:
+            # Step 1-2: Show spike noise (cat pushing down while leaving)
+            if st.session_state.demo_exit_counter <= 2:
                 # Add spike noise (cat pushing down)
                 spike_noise = random.uniform(0.2, 0.5)  # 200-500g spike
                 current_weight = st.session_state.demo_last_weight + spike_noise
@@ -187,11 +220,9 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
                 if st.session_state.demo_event_started and event_detector.current_event:
                     event_detector.current_event.weights.append(noisy_weight)
                     event_detector.current_event.timestamps.append(now)
-                
-                status_placeholder.warning(f"🚪 **고양이 퇴실 중** - 일시적 무게 증가: {noisy_weight:.3f}kg")
             
-            # For next 2 readings (1 second): return to baseline
-            elif st.session_state.demo_exit_counter <= 5:
+            # Step 3: Return to baseline and finalize
+            elif st.session_state.demo_exit_counter == 3:
                 current_weight = st.session_state.demo_baseline
                 noisy_weight = add_noise(current_weight, noise_range=0.01)
                 
@@ -199,10 +230,6 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
                 st.session_state.demo_weights.append(noisy_weight)
                 st.session_state.demo_timestamps.append(now)
                 
-                status_placeholder.success(f"✅ **기준선 복귀** - 무게: {noisy_weight:.3f}kg")
-            
-            # After 5 readings (2.5 seconds total): finalize event and stop
-            else:
                 # Finalize event
                 if st.session_state.demo_event_started and event_detector.current_event:
                     baseline = baseline_manager.current_baseline
@@ -224,7 +251,6 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
                     # Save event
                     db.save_event(event)
                     
-                    status_placeholder.success(f"🎉 이벤트 기록 완료: {event_type.value}")
                     st.session_state.demo_event_started = False
                 
                 # Stop demo
@@ -267,19 +293,11 @@ def render_demo_mode_page(db, event_detector, classifier, identifier, baseline_m
                     weights=[noisy_weight],
                     timestamps=[now]
                 )
-                
-                status_placeholder.success(f"🟢 **이벤트 감지 시작** - 무게 변화: {weight_diff:+.3f}kg")
             
             elif st.session_state.demo_event_started and event_detector.current_event:
                 # Event ongoing - add data point
                 event_detector.current_event.weights.append(noisy_weight)
                 event_detector.current_event.timestamps.append(now)
-                
-                duration = (now - event_detector.current_event.start_time).total_seconds()
-                status_placeholder.info(f"⏱️ **이벤트 진행 중** - 지속시간: {duration:.1f}초 | 현재 무게: {noisy_weight:.3f}kg")
-            
-            else:
-                status_placeholder.info(f"⚪ **대기 중** - 현재 무게: {noisy_weight:.3f}kg | 기준선: {baseline:.3f}kg")
         
         # Create chart
         if len(st.session_state.demo_weights) > 0:
